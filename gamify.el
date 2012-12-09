@@ -28,8 +28,9 @@
 ;; There are quite a few variables to tweak:
 ;; - `gamify-update-interval' - number of seconds between mode-line updates.
 ;; - `gamify-format' - format string used in the mode-line:
-;;    %XP - total exp point you own,
-;;    %xp - "level-bar" percentage,
+;;    %T - total exp point you own,
+;;    %XP - "level-bar" percentage,
+;;    %xp - focus stat percentage,
 ;;    %Lc - current level name,
 ;;    %Ln - next level name.
 ;; - `gamify-default-exp' - default base exp value used by `gamify-some-exp'.
@@ -65,10 +66,11 @@
   :type 'number
   :group 'gamify)
 
-(defcustom gamify-format "%xp"
+(defcustom gamify-format "%XP"
   "Format string:
-%XP - total exp point you own,
-%xp - \"level-bar\" percentage,
+%T - total exp point you own,
+%XP - \"level-bar\" percentage,
+%xp - focus stats percentage,
 %Lc - current level name,
 %Ln - next level name."
   :type 'string
@@ -104,6 +106,11 @@
   :type 'number
   :group 'gamify)
 
+(defcustom gamify-focus-stats nil
+  "Stats Gamify should focus on."
+  :type 'list
+  :group 'gamify)
+
 (defcustom gamify-stat-levels
   '((0 . "Dabbling")
     (500 . "Novice")
@@ -118,8 +125,8 @@
     (9500 . "Accomplished")
     (11000 . "Great")
     (12600 . "Master")
-    (14300 . "High Master")
-    (16100 . "Grand Master")
+    (14300 . "HighMaster")
+    (16100 . "GrandMaster")
     (18000 . "Legendary")
     (333333333333333 . "CHEATER"))
   "An alist of Gamify levels and their exp values."
@@ -142,7 +149,7 @@
 (defvar gamify-pretty-stats-update-interval (* 10 60)) ;; 10 minutes
 
 (defun gamify-get-total-exp (name &optional visited)
-  (if (assoc name gamify-stats-alist)
+  (when (assoc name gamify-stats-alist)
     (let* ((skill (assoc name gamify-stats-alist))
            (exp (cadr skill))
            (dependancies (nth 3 skill))
@@ -165,9 +172,8 @@
             (setq total-exp
                   (+ total-exp
                      (round (* dep-factor
-                               (gamify-get-total-exp dep-name exclude))))))))
-      total-exp)
-    0))
+                               (or (gamify-get-total-exp dep-name exclude) 0))))))))
+      total-exp)))
 
 (defun gamify-rusty-p (stat-name)
   (let* ((curr-time (float-time (current-time)))
@@ -216,6 +222,14 @@
 (defvar gamify-dot-max-node-size 3.0)
 (defvar gamify-dot-border-size 5)
 (defvar gamify-dot-node-shape "circle")
+(defvar gamify-dot-node-fill-color "#ffffff")
+(defvar gamify-dot-edge-color "#000000")
+(defvar gamify-dot-default-node-color "#e0e0e0")
+(defvar gamify-dot-default-font-color "#d8d8d8")
+(defvar gamify-dot-font-color "#000000")
+(defvar gamify-dot-rusty-font-color "#d8d8d8")
+(defvar gamify-dot-very-rusty-font-color "#989898")
+(defvar gamify-dot-background-color "#ffffff")
 (defvar gamify-dot-level-colors
   '(("Dabbling")
     ("Novice")
@@ -238,45 +252,63 @@
 (defun gamify-stats-to-dot (filename &optional skip-levels)
   (with-temp-buffer
     (insert "digraph YourStats {\n")
-    (insert (format "node [shape=%s, width=%.2f, color=\"#e0e0e0\", fontcolor=\"#d8d8d8\", fixedsize=true];"
+    (insert (format "bgcolor=\"%s\";\n"
+                    gamify-dot-background-color))
+    (insert (format (concat "node [penwidth=2, shape=%s, width=%.2f, color=\"%s\","
+                            " fontcolor=\"%s\", fixedsize=true,"
+                            " style=filled, fillcolor=\"%s\"];")
                     gamify-dot-node-shape
-                    gamify-dot-min-node-size))
-    (dolist (stat gamify-stats-alist)
-      (let* ((name (car stat))
-             (exp (nth 1 stat))
-             (dependancies (nth 3 stat))
-             (total-exp (gamify-get-total-exp name))
-             (level (gamify-get-level total-exp))
-             (max-exp (apply #'max (map 'list
-                                        (lambda (e)
-                                          (gamify-get-total-exp (car e)))
-                                        gamify-stats-alist)))
-             (node-size (+ gamify-dot-min-node-size
-                           (* (/ (float total-exp) max-exp)
-                              (- gamify-dot-max-node-size
-                                 gamify-dot-min-node-size))))
-             (exp-str (if (equal total-exp exp)
-                          (format "%d" exp)
-                          (format "%d (%d)" total-exp exp)))
-             (node-color (cdr (assoc (caar (gamify-get-level total-exp))
-                                     gamify-dot-level-colors)))
-             (font-color (or (case (gamify-rusty-p name)
-                               (very-rusty "#d8d8d8")
-                               (rusty "#989898"))
-                            "#000000")))
-        (unless (member (caar level) skip-levels)
-          (insert (format (concat "\"%s\" [penwidth=%d, shape=%s, width=%.2f,"
-                                  " fixedsize=true, label=\"%s\\n%s\", color=\"%s\","
-                                  " fontcolor=\"%s\"];\n")
-                          name gamify-dot-border-size gamify-dot-node-shape
-                          node-size name exp-str node-color font-color))
-          (dolist (dependancy dependancies)
-            (insert (if (listp dependancy)
-                        (format "\"%s\" -> \"%s\" [label=\"%.1f\"];\n"
-                                (car dependancy)
-                                name
-                                (cadr dependancy))
-                        (format "\"%s\" -> \"%s\";\n" dependancy name)))))))
+                    gamify-dot-min-node-size
+                    gamify-dot-default-node-color
+                    gamify-dot-default-font-color
+                    gamify-dot-node-fill-color))
+    (insert (format "edge [penwidth=2, color=\"%s\", fontcolor=\"%s\"];\n"
+                    gamify-dot-edge-color
+                    gamify-dot-font-color))
+
+    (let ((max-exp (apply #'max (map 'list
+                                     (lambda (e)
+                                       (gamify-get-total-exp (car e)))
+                                     gamify-stats-alist))))
+      (dolist (stat gamify-stats-alist)
+        (let* ((name (car stat))
+               (exp (nth 1 stat))
+               (dependancies (nth 3 stat))
+               (total-exp (gamify-get-total-exp name))
+               (level (gamify-get-level total-exp))
+               (node-size (+ gamify-dot-min-node-size
+                             (* (/ (float total-exp) max-exp)
+                                (- gamify-dot-max-node-size
+                                   gamify-dot-min-node-size))))
+               (exp-str (if (equal total-exp exp)
+                            (format "%d" exp)
+                            (format "%d (%d)" total-exp exp)))
+               (node-color (cdr (assoc (caar (gamify-get-level total-exp))
+                                       gamify-dot-level-colors)))
+               (font-color (or (case (gamify-rusty-p name)
+                                 (very-rusty gamify-dot-very-rusty-font-color)
+                                 (rusty gamify-dot-rusty-font-color))
+                               gamify-dot-font-color)))
+          (unless (member (caar level) skip-levels)
+            (insert (format (concat "\"%s\" [penwidth=%d, shape=%s, width=%.2f,"
+                                    " fixedsize=true, label=\"%s\\n%s\", color=\"%s\","
+                                    " fontcolor=\"%s\", style=filled, fillcolor=\"%s\"];\n")
+                            name
+                            gamify-dot-border-size
+                            gamify-dot-node-shape
+                            node-size
+                            name
+                            exp-str
+                            node-color
+                            font-color
+                            gamify-dot-node-fill-color))
+            (dolist (dependancy dependancies)
+              (insert (if (listp dependancy)
+                          (format "\"%s\" -> \"%s\" [label=\"%.1f\"];\n"
+                                  (car dependancy)
+                                  name
+                                  (cadr dependancy))
+                          (format "\"%s\" -> \"%s\";\n" dependancy name))))))))
     (insert "}\n")
     (write-file filename)))
 
@@ -286,6 +318,9 @@
 (defun gamify-some-exp (&optional low delta)
   (+ (or low gamify-default-exp)
      (% (random t) (1+ (or delta gamify-default-exp-delta)))))
+
+(defun gamify-focus-on (stats)
+  (setq gamify-focus-stats stats))
 
 (defun gamify-save-stats ()
   "Saves the stats to `gamify-stats-file'."
@@ -316,6 +351,14 @@
           do (setq current (cons l e)))
     (cons current next)))
 
+(defun gamify-get-level-percentage (curr-exp)
+  (let* ((level (gamify-get-level curr-exp))
+         (current (car level))
+         (next (cdr level))
+         (delta (- (cdr next) (cdr current)))
+         (exp (- curr-exp (cdr current))))
+    (/ (* 100.0 exp) delta)))
+
 (defun gamify-org-add-exp (arg)
   "A hook used to gamify Org-Mode tasks. Usage:
 - Tag your tasks with somethis meaningful, e. g. \"coding\".
@@ -323,7 +366,7 @@
 - ???
 - PROFI!"
 
-  (require 'org-mode)
+  (require 'org)
   (require 'org-habit)
   (when (and (equal (plist-get arg :type) 'todo-state-change)
              (equal (plist-get arg :to) "DONE"))
@@ -404,6 +447,18 @@
                        (apply #'concat notify-text)
                        (concat my-stuff-dir "xp.png")))))))
 
+(defun gamify-org-agenda-tasks ()
+  "Set focus stats from Org Agenda buffer."
+  (interactive)
+  (when (string= (buffer-name) org-agenda-buffer-name)
+    (let* ((marker (get-text-property (point) 'org-hd-marker))
+           (props (org-entry-properties marker))
+           (exp (assoc gamify-exp-property props))
+           (tags (assoc "ALLTAGS" props))
+           (tags-list (when tags
+                        (delq "" (split-string (cdr tags) ":")))))
+        (gamify-focus-on tags-list))))
+
 (defun gamify-start ()
   "Starts the gamification!"
   (interactive)
@@ -444,23 +499,26 @@
   (gamify-save-stats))
 
 (setq gamify-formatters
-  '(("XP" . (lambda (stats)
+  '(("T" . (lambda (stats)
               (format "%d" (car stats))))
+    ("XP" . (lambda (stats)
+              (format "%.1f"
+                      (gamify-get-level-percentage (car stats)))))
     ("xp" . (lambda (stats)
-              (let* ((level (gamify-get-level (car stats)))
-                     (current (car level))
-                     (next (cdr level))
-                     (delta (- (cdr next) (cdr current)))
-                     (exp (- (car stats) (cdr current))))
-                (format "%.1f" (/ (* 100.0 exp) delta)))))
-
+              (format "%.1f"
+                      (gamify-get-level-percentage
+                        (apply #'min
+                               (delq nil
+                                     (map 'list
+                                          (lambda (stat)
+                                            (gamify-get-total-exp stat))
+                                          gamify-focus-stats)))))))
     ("Lc" . (lambda (stats)
               (format "%s" (caar (gamify-get-level (car stats))))))
     ("Ln" . (lambda (stats)
               (format "%s" (cadr (gamify-get-level (car stats)))))))
 
     ;; TODO Top skills
-    ;; TODO Active skills
     ;; etc
 )
 
