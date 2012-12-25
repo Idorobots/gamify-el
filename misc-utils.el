@@ -44,4 +44,24 @@
   (start-process "play" nil "play" sound)
   "Done!")
 
+(defun split-string-on-case (string &optional down-p)
+  (let* ((len (length string))
+         (start (- len 1))
+         (end len)
+         (matches ())
+         (cas (if down-p
+                  #'downcase
+                  #'upcase)))
+    (while (/= start -1)
+      (let ((char (aref string start)))
+        (when (= char (funcall cas char))
+          (setq matches (cons (substring string start end)
+                              matches))
+          (setq end start)))
+      (setq start (- start 1)))
+    (if (/= end 0)
+        (cons (substring string 0 end)
+              matches)
+        matches)))
+
 (provide 'misc-utils)

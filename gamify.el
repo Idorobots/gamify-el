@@ -211,16 +211,20 @@
                           (unless (member (caar level) skip-levels)
                             (format "%s at %s%s: %d/%d\n"
                                     (caar level)
-                                    name
+                                    (gamify-stat-name name)
                                     rustiness-str
                                     total-exp
                                     (cddr level)))))
                       gamify-stats-alist))))))
   gamify-last-pretty-stats-msg)
 
+(defvar gamify-dot-show-exp t)
+(defvar gamify-dot-name-threshold 12)
+(defvar gamify-dot-min-font-size 12.0)
+(defvar gamify-dot-max-font-size 24.0)
 (defvar gamify-dot-min-node-size 1.0)
 (defvar gamify-dot-max-node-size 3.0)
-(defvar gamify-dot-border-size 5)
+(defvar gamify-dot-border-size 3)
 (defvar gamify-dot-node-shape "circle")
 (defvar gamify-dot-node-fill-color "#ffffff")
 (defvar gamify-dot-edge-color "#000000")
@@ -244,23 +248,25 @@
     ("Accomplished")
     ("Great")
     ("Master")
-    ("High Master")
-    ("Grand Master")
+    ("HighMaster")
+    ("GrandMaster")
     ("Legendary")
     ("CHEATER" . "#FF0000")))
 
 (defun gamify-stats-to-dot (filename &optional skip-levels)
+  "Exports your Gamify stats to .dot format."
   (with-temp-buffer
     (insert "digraph YourStats {\n")
     (insert (format "bgcolor=\"%s\";\n"
                     gamify-dot-background-color))
     (insert (format (concat "node [penwidth=2, shape=%s, width=%.2f, color=\"%s\","
-                            " fontcolor=\"%s\", fixedsize=true,"
+                            " fontcolor=\"%s\", fixedsize=true, fontsize=\"%s\""
                             " style=filled, fillcolor=\"%s\"];")
                     gamify-dot-node-shape
                     gamify-dot-min-node-size
                     gamify-dot-default-node-color
                     gamify-dot-default-font-color
+                    gamify-dot-min-font-size
                     gamify-dot-node-fill-color))
     (insert (format "edge [penwidth=2, color=\"%s\", fontcolor=\"%s\"];\n"
                     gamify-dot-edge-color
@@ -272,36 +278,50 @@
                                      gamify-stats-alist))))
       (dolist (stat gamify-stats-alist)
         (let* ((name (car stat))
+               (printed-name (if (>= (length name) gamify-dot-name-threshold)
+                                 (gamify-stat-name name"\\n")
+                                 name))
                (exp (nth 1 stat))
                (dependancies (nth 3 stat))
                (total-exp (gamify-get-total-exp name))
                (level (gamify-get-level total-exp))
+               (size-factor (sqrt (/ (float total-exp) max-exp)))
                (node-size (+ gamify-dot-min-node-size
-                             (* (/ (float total-exp) max-exp)
+                             (* size-factor
                                 (- gamify-dot-max-node-size
                                    gamify-dot-min-node-size))))
-               (exp-str (if (equal total-exp exp)
-                            (format "%d" exp)
-                            (format "%d (%d)" total-exp exp)))
+               (label (if gamify-dot-show-exp
+                          (format "%s\\n%d (%d%%)"
+                                  printed-name
+                                  total-exp
+                                  (gamify-get-level-percentage total-exp))
+                          (format "%s at\\n%s"
+                                  (gamify-stat-name (caar level))
+                                  printed-name)))
                (node-color (cdr (assoc (caar (gamify-get-level total-exp))
                                        gamify-dot-level-colors)))
                (font-color (or (case (gamify-rusty-p name)
                                  (very-rusty gamify-dot-very-rusty-font-color)
                                  (rusty gamify-dot-rusty-font-color))
-                               gamify-dot-font-color)))
+                               gamify-dot-font-color))
+               (font-size (+ gamify-dot-min-font-size
+                             (* (- gamify-dot-max-font-size
+                                   gamify-dot-min-font-size)
+                                size-factor))))
           (unless (member (caar level) skip-levels)
             (insert (format (concat "\"%s\" [penwidth=%d, shape=%s, width=%.2f,"
-                                    " fixedsize=true, label=\"%s\\n%s\", color=\"%s\","
-                                    " fontcolor=\"%s\", style=filled, fillcolor=\"%s\"];\n")
+                                    " fixedsize=true, label=\"%s\", color=\"%s\","
+                                    " fontcolor=\"%s\", style=filled, fillcolor=\"%s\""
+                                    " fontsize=\"%.2f\"];\n")
                             name
                             gamify-dot-border-size
                             gamify-dot-node-shape
                             node-size
-                            name
-                            exp-str
+                            label
                             node-color
                             font-color
-                            gamify-dot-node-fill-color))
+                            gamify-dot-node-fill-color
+                            font-size))
             (dolist (dependancy dependancies)
               (insert (if (listp dependancy)
                           (format "\"%s\" -> \"%s\" [label=\"%.1f\"];\n"
@@ -311,6 +331,20 @@
                           (format "\"%s\" -> \"%s\";\n" dependancy name))))))))
     (insert "}\n")
     (write-file filename)))
+
+(defun gamify-stats-to-png (filename &optional skip-levels)
+  "Exports your stats directly to a .png file using the `dot' layout."
+  (let ((tmp-file (concat "/tmp/" (md5 filename) ".dot")))
+    (gamify-stats-to-dot tmp-file skip-levels)
+    (shell-command-to-string
+      (concat "ccomps -x " tmp-file
+              " | dot | gvpack -array3 | neato -Tpng -n2 -o "
+              filename))))
+
+(defun gamify-stat-name (name &optional separator)
+  (mapconcat 'identity
+             (split-string-on-case name)
+             (or separator " ")))
 
 (defun gamify-assign-some-exp (&optional low delta)
   (number-to-string (gamify-some-exp low delta)))
@@ -508,11 +542,12 @@
               (format "%.1f"
                       (gamify-get-level-percentage
                         (apply #'min
-                               (delq nil
-                                     (map 'list
-                                          (lambda (stat)
-                                            (gamify-get-total-exp stat))
-                                          gamify-focus-stats)))))))
+                               (or (delq nil
+                                   (map 'list
+                                        (lambda (stat)
+                                          (gamify-get-total-exp stat))
+                                        gamify-focus-stats))
+                                   '(0)))))))
     ("Lc" . (lambda (stats)
               (format "%s" (caar (gamify-get-level (car stats))))))
     ("Ln" . (lambda (stats)
