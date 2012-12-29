@@ -209,22 +209,24 @@
                                                      " (Rusty)")
                                                     (t ""))))
                           (unless (member (caar level) skip-levels)
-                            (format "%s at %s%s: %d/%d\n"
+                            (format "%s at %s%s: %d/%d (%d%%)\n"
                                     (caar level)
                                     (gamify-stat-name name)
                                     rustiness-str
                                     total-exp
-                                    (cddr level)))))
+                                    (cddr level)
+                                    (gamify-get-level-percentage total-exp)))))
                       gamify-stats-alist))))))
   gamify-last-pretty-stats-msg)
 
+(defvar gamify-dot-layout-algorithm "dot")
 (defvar gamify-dot-show-exp t)
-(defvar gamify-dot-name-threshold 12)
 (defvar gamify-dot-min-font-size 12.0)
 (defvar gamify-dot-max-font-size 24.0)
 (defvar gamify-dot-min-node-size 1.0)
 (defvar gamify-dot-max-node-size 3.0)
-(defvar gamify-dot-border-size 3)
+(defvar gamify-dot-border-width 5)
+(defvar gamify-dot-edge-width 4)
 (defvar gamify-dot-node-shape "circle")
 (defvar gamify-dot-node-fill-color "#ffffff")
 (defvar gamify-dot-edge-color "#000000")
@@ -253,7 +255,9 @@
     ("Legendary")
     ("CHEATER" . "#FF0000")))
 
-(defun gamify-stats-to-dot (filename &optional skip-levels)
+;; FIXME Filtered out nodes that appear on the graph as dependancies of other nodes
+;; FIXME use raw stat name for label. Should use (gamify-stat-name x) instead.
+(defun gamify-stats-to-dot (filename &optional skip-levels focus-stats)
   "Exports your Gamify stats to .dot format."
   (with-temp-buffer
     (insert "digraph YourStats {\n")
@@ -268,19 +272,21 @@
                     gamify-dot-default-font-color
                     gamify-dot-min-font-size
                     gamify-dot-node-fill-color))
-    (insert (format "edge [penwidth=2, color=\"%s\", fontcolor=\"%s\"];\n"
+    (insert (format "edge [penwidth=%d, color=\"%s\", fontcolor=\"%s\"];\n"
+                    gamify-dot-edge-width
                     gamify-dot-edge-color
                     gamify-dot-font-color))
 
-    (let ((max-exp (apply #'max (map 'list
+    (let ((stat-list (if focus-stats
+                         (gamify-pull-stats focus-stats skip-levels)
+                         gamify-stats-alist))
+          (max-exp (apply #'max (map 'list
                                      (lambda (e)
                                        (gamify-get-total-exp (car e)))
                                      gamify-stats-alist))))
-      (dolist (stat gamify-stats-alist)
+      (dolist (stat stat-list)
         (let* ((name (car stat))
-               (printed-name (if (>= (length name) gamify-dot-name-threshold)
-                                 (gamify-stat-name name"\\n")
-                                 name))
+               (printed-name (gamify-stat-name name "\\n"))
                (exp (nth 1 stat))
                (dependancies (nth 3 stat))
                (total-exp (gamify-get-total-exp name))
@@ -314,7 +320,7 @@
                                     " fontcolor=\"%s\", style=filled, fillcolor=\"%s\""
                                     " fontsize=\"%.2f\"];\n")
                             name
-                            gamify-dot-border-size
+                            gamify-dot-border-width
                             gamify-dot-node-shape
                             node-size
                             label
@@ -332,19 +338,54 @@
     (insert "}\n")
     (write-file filename)))
 
-(defun gamify-stats-to-png (filename &optional skip-levels)
+(defun gamify-stats-to-png (filename &optional skip-levels focus-stats)
   "Exports your stats directly to a .png file using the `dot' layout."
   (let ((tmp-file (concat "/tmp/" (md5 filename) ".dot")))
-    (gamify-stats-to-dot tmp-file skip-levels)
+    (gamify-stats-to-dot tmp-file skip-levels focus-stats)
     (shell-command-to-string
       (concat "ccomps -x " tmp-file
-              " | dot | gvpack -array3 | neato -Tpng -n2 -o "
+              " | " gamify-dot-layout-algorithm
+              " | unflatten "
+              " | gvpack -array3 "
+              " | neato -Tpng -n2 -o "
               filename))))
 
+;; Not my brightest Emacs-Lisp moment...
+(defun gamify-pull-stats (stat-list &optional skip-levels exclude-list)
+  (labels ((pull-stats (stats)
+                       (apply #'append
+                              (map 'list
+                                   (lambda (stat)
+                                     (let* ((s (assoc stat gamify-stats-alist))
+                                            (deps (map 'list
+                                                       (lambda (dep)
+                                                         (if (consp dep)
+                                                             (car dep)
+                                                           dep))
+                                                       (nth 3 s))))
+                                       (unless (or (null s)
+                                                   (member stat exclude-list)
+                                                   (member (caar (gamify-get-level
+                                                                  (gamify-get-total-exp stat)))
+                                                           skip-levels))
+                                         (setq exclude-list (cons stat exclude-list))
+                                         (list* s (pull-stats deps)))))
+                                   stats))))
+    (pull-stats stat-list)))
+
+(defvar gamify-stat-name-threshold 12)
+(defvar gamify-stat-name-translation-alist '())
+
 (defun gamify-stat-name (name &optional separator)
-  (mapconcat 'identity
-             (split-string-on-case name)
-             (or separator " ")))
+  (let* ((translation (assoc name gamify-stat-name-translation-alist))
+         (real-name (if translation
+                        (cdr translation)
+                      name)))
+    (if (>= (length real-name) gamify-stat-name-threshold)
+        (mapconcat 'identity
+                   (split-string-on-case real-name)
+                   (or separator " "))
+        real-name)))
 
 (defun gamify-assign-some-exp (&optional low delta)
   (number-to-string (gamify-some-exp low delta)))
@@ -465,7 +506,8 @@
                   (list stat
                         (+ exp penalty)
                         curr-time
-                        (when (y-or-n-p "This is a new skill. Care to add its dependancies? ")
+                        (when (y-or-n-p (format "`%s' is a new skill. Care to add its dependancies? "
+                                                stat))
                           ;; FIXME post-command-hook error
                           (delq ""
                                 (split-string
@@ -473,7 +515,7 @@
             (add-to-list 'notify-text
                          (format "You earned %d XP in %s%s!%s"
                                  (+ exp penalty)
-                                 stat
+                                 (gamify-stat-name stat)
                                  penalty-str
                                  levelup-str)))
 
