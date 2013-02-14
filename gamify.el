@@ -56,6 +56,7 @@
 (defvar gamify-mode-line-string "")
 (defvar gamify-formatters ())
 (defvar gamify-stats-alist ())
+(defvar gamify-achievements-alist ())
 
 (defgroup gamify nil
   "Display your Gamify stats in the mode-line."
@@ -78,6 +79,11 @@
 
 (defcustom gamify-exp-property "gamify_exp"
   "Property used by Org-Mode tasks to assign experience points."
+  :type 'string
+  :group 'gamify)
+
+(defcustom gamify-achievement-property "gamify_achievement"
+  "Property used by Org-Mode tasks to assign achievements to a task."
   :type 'string
   :group 'gamify)
 
@@ -175,6 +181,25 @@
                                (or (gamify-get-total-exp dep-name exclude) 0))))))))
       total-exp)))
 
+(defun gamify-add-achievement (achievement)
+  (let* ((last-id (caar gamify-achievements-alist))
+         (id (if last-id (+ 1 last-id) 0)))
+    (setq gamify-achievements-alist (cons (cons id achievement)
+                                          gamify-achievements-alist))
+    id))
+
+
+(defun gamify-get-achievements (stat-name)
+  (let* ((stat (assoc stat-name gamify-stats-alist))
+         (achievements (nth 4 stat)))
+    (delq nil
+          (map 'list
+               (lambda (achievement)
+                 (let ((a-text (assoc achievement gamify-achievements-alist)))
+                   (when a-text
+                     (cdr a-text))))
+               achievements))))
+
 (defun gamify-rusty-p (stat-name)
   (let* ((curr-time (float-time (current-time)))
          (stat (assoc stat-name gamify-stats-alist))
@@ -200,6 +225,7 @@
                         (let* ((name (car e))
                                (mod-time (nth 2 e))
                                (total-exp (gamify-get-total-exp name (list name)))
+                               (achievements (gamify-get-achievements name))
                                (level (gamify-get-level total-exp))
                                (time-delta (- current-time mod-time))
                                (rustiness (gamify-rusty-p name))
@@ -209,8 +235,9 @@
                                                      " (Rusty)")
                                                     (t ""))))
                           (unless (member (caar level) skip-levels)
-                            (format "%s at %s%s: %d/%d (%d%%)\n"
+                            (format "%s%s at %s%s: %d/%d (%d%%)\n"
                                     (caar level)
+                                    (if achievements "*" "")
                                     (gamify-stat-name name)
                                     rustiness-str
                                     total-exp
@@ -221,6 +248,7 @@
 
 (defvar gamify-dot-layout-algorithm "dot")
 (defvar gamify-dot-show-exp t)
+(defvar gamify-dot-show-achievements t)
 (defvar gamify-dot-min-font-size 12.0)
 (defvar gamify-dot-max-font-size 24.0)
 (defvar gamify-dot-min-node-size 1.0)
@@ -289,6 +317,7 @@
                (printed-name (gamify-stat-name name "\\n"))
                (exp (nth 1 stat))
                (dependancies (nth 3 stat))
+               (achievements (gamify-get-achievements name))
                (total-exp (gamify-get-total-exp name))
                (level (gamify-get-level total-exp))
                (size-factor (sqrt (/ (float total-exp) max-exp)))
@@ -334,7 +363,13 @@
                                   (car dependancy)
                                   name
                                   (cadr dependancy))
-                          (format "\"%s\" -> \"%s\";\n" dependancy name))))))))
+                          (format "\"%s\" -> \"%s\";\n" dependancy name))))
+            (when gamify-dot-show-achievements
+              ;; TODO Needs teh pretty.
+              (dolist (achievement achievements)
+                (insert (format "\"%s\" -> \"%s\""
+                                name
+                                achievement))))))))
     (insert "}\n")
     (write-file filename)))
 
@@ -408,7 +443,13 @@
     (dolist (stat gamify-stats-alist)
       (insert (prin1-to-string stat))
       (insert "\n"))
-    (insert "))")
+    (insert "))\n")
+    (insert "(setq gamify-achievements-alist '(\n")
+    (dolist (achievement gamify-achievements-alist)
+      (insert (prin1-to-string achievement))
+      (insert "\n"))
+    (insert "))\n")
+    (insert ";; gamify ends here")
     (write-file gamify-stats-file)))
 
 (defun gamify-show-stats ()
@@ -458,7 +499,14 @@
            (exp-val (read exp-str))
            (exp (cond ((numberp exp-val) exp-val)
                       ((listp exp-val)   (apply #'gamify-some-exp exp-val))
-                      (t                 0))))
+                      (t                 0)))
+           (gamify-achievement (assoc gamify-achievement-property
+                                      (org-entry-properties pos)))
+           (achievement-str (when gamify-achievement
+                              (cdr gamify-achievement)))
+           ;; Add new achievement to the achievement list.
+           (achievement-id (when achievement-str
+                             (gamify-add-achievement achievement-str))))
 
       (goto-char pos)
       (save-excursion
@@ -498,6 +546,7 @@
                          "\n"))
                 (setf (cadr curr-exp) total-exp)
                 (setf (caddr curr-exp) curr-time)
+                (setf (nth 4 curr-exp) (cons achievement-id (nth 4 curr-exp)))
                 (setq gamify-last-stats-modification-time curr-time)))
 
               (unless curr-exp
@@ -511,14 +560,19 @@
                           ;; FIXME post-command-hook error
                           (delq ""
                                 (split-string
-                                  (read-string "Enter a space-separated list of stats: "))))))))
+                                  (read-string "Enter a space-separated list of stats: "))))
+                        (when achievement-id
+                          (list achievement-id))))))
             (add-to-list 'notify-text
-                         (format "You earned %d XP in %s%s!%s"
+                         (format "You earned %d XP in %s%s!%s%s"
                                  (+ exp penalty)
                                  (gamify-stat-name stat)
                                  penalty-str
-                                 levelup-str)))
-
+                                 levelup-str
+                                 (if achievement-str
+                                     (concat achievement-str "\n")
+                                     ""))))
+          (gamify-save-stats)
           (notify-send "QUEST COMPLETED"
                        (apply #'concat notify-text)
                        (concat my-stuff-dir "xp.png")))))))
@@ -544,7 +598,7 @@
   (when (file-exists-p gamify-stats-file)
     (load-file gamify-stats-file))
 
-  (add-hook 'auto-save-hook 'gamify-save-stats)
+  ; (add-hook 'auto-save-hook 'gamify-save-stats) ;; NOTE Too frequent.
   (add-hook 'kill-emacs-hook 'gamify-save-stats)
 
   (when gamify-org-p
