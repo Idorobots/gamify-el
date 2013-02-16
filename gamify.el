@@ -195,9 +195,7 @@
     (delq nil
           (map 'list
                (lambda (achievement)
-                 (let ((a-text (assoc achievement gamify-achievements-alist)))
-                   (when a-text
-                     (cdr a-text))))
+                 (assoc achievement gamify-achievements-alist))
                achievements))))
 
 (defun gamify-rusty-p (stat-name)
@@ -248,7 +246,7 @@
 
 (defvar gamify-dot-layout-algorithm "dot")
 (defvar gamify-dot-show-exp t)
-(defvar gamify-dot-show-achievements t)
+(defvar gamify-dot-show-achievements nil)
 (defvar gamify-dot-min-font-size 12.0)
 (defvar gamify-dot-max-font-size 24.0)
 (defvar gamify-dot-min-node-size 1.0)
@@ -256,6 +254,8 @@
 (defvar gamify-dot-border-width 5)
 (defvar gamify-dot-edge-width 4)
 (defvar gamify-dot-node-shape "circle")
+(defvar gamify-dot-achievement-box-shape "box")
+(defvar gamify-dot-achievement-box-color "#d8d8d8")
 (defvar gamify-dot-node-fill-color "#ffffff")
 (defvar gamify-dot-edge-color "#000000")
 (defvar gamify-dot-default-node-color "#e0e0e0")
@@ -364,12 +364,24 @@
                                   name
                                   (cadr dependancy))
                           (format "\"%s\" -> \"%s\";\n" dependancy name))))
-            (when gamify-dot-show-achievements
-              ;; TODO Needs teh pretty.
-              (dolist (achievement achievements)
-                (insert (format "\"%s\" -> \"%s\""
-                                name
-                                achievement))))))))
+            (when (and gamify-dot-show-achievements
+                       achievements)
+              (insert (format (concat "\"%s achievements\" [fixedsize=false,"
+                                      " fontcolor=\"%s\", penwidth=%d, color=\"%s\","
+                                      " shape=%s, label=\"%s\"];\n")
+                              name
+                              gamify-dot-font-color
+                              gamify-dot-border-width
+                              gamify-dot-achievement-box-color
+                              gamify-dot-achievement-box-shape
+                              (apply #'concat
+                                     (map 'list
+                                          (lambda (a)
+                                            (concat (cdr a) "\\n"))
+                                          achievements))))
+              (insert (format "\"%s achievements\" -> \"%s\"\n"
+                              name
+                              name)))))))
     (insert "}\n")
     (write-file filename)))
 
