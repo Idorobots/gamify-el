@@ -1,6 +1,6 @@
 ;;; gamify.el --- Gamify your GTD!  -*- coding: mule-utf-8 -*-
 
-;; Copyright (C) 2012 Kajetan Rzepecki
+;; Copyright (C) 2013 Kajetan Rzepecki
 
 ;; Author: Kajetan Rzepecki
 
@@ -207,6 +207,11 @@
           ((> time-delta gamify-rusty-time)       'rusty)
           (t nil))))
 
+(defun gamify-get-preposition (name)
+  (cond ((string-match "^.*ing.*$" name) "at")
+        ((string-match "^.*er$" name) "")
+        (t "in")))
+
 (defun gamify-get-pretty-stats (&optional skip-levels)
   (let ((current-time (float-time (current-time))))
     (when (or (not gamify-last-pretty-stats-msg)
@@ -221,6 +226,7 @@
                  (map 'list
                       (lambda (e)
                         (let* ((name (car e))
+                               (pretty-name (gamify-stat-name name))
                                (mod-time (nth 2 e))
                                (total-exp (gamify-get-total-exp name (list name)))
                                (achievements (gamify-get-achievements name))
@@ -233,10 +239,11 @@
                                                      " (Rusty)")
                                                     (t ""))))
                           (unless (member (caar level) skip-levels)
-                            (format "%s%s at %s%s: %d/%d (%d%%)\n"
+                            (format "%s%s %s %s%s: %d/%d (%d%%)\n"
                                     (caar level)
                                     (if achievements "*" "")
-                                    (gamify-stat-name name)
+                                    (gamify-get-preposition pretty-name)
+                                    pretty-name
                                     rustiness-str
                                     total-exp
                                     (cddr level)
@@ -330,8 +337,9 @@
                                   printed-name
                                   total-exp
                                   (gamify-get-level-percentage total-exp))
-                          (format "%s at\\n%s"
+                          (format "%s %s\\n%s"
                                   (gamify-stat-name (caar level))
+                                  (gamify-get-preposition printed-name)
                                   printed-name)))
                (node-color (cdr (assoc (caar (gamify-get-level total-exp))
                                        gamify-dot-level-colors)))
