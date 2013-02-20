@@ -496,7 +496,6 @@
          (exp (- curr-exp (cdr current))))
     (/ (* 100.0 exp) delta)))
 
-;; FIXME Adding this to org-blocker-hook messes up org-agenda buffer fontification.
 (defun gamify-org-add-exp (arg)
   "A hook used to gamify Org-Mode tasks. Usage:
 - Tag your tasks with somethis meaningful, e. g. \"coding\".
@@ -505,7 +504,6 @@
 - PROFIT!"
 
   (require 'org)
-  (require 'org-habit)
   (when (and (equal (plist-get arg :type) 'todo-state-change)
              (equal (plist-get arg :to) "DONE"))
     (let* ((curr-time (float-time (current-time)))
@@ -534,74 +532,71 @@
       (goto-char pos)
       (save-excursion
         (save-restriction
-          (org-narrow-to-subtree)
-          (when (or (re-search-forward org-deadline-time-regexp nil t)
-                    (re-search-forward org-scheduled-time-regexp nil t))
-            ;; NOTE Won't work for some reason.
-            ;; NOTE Might want to use org-keyword-timestamp-regexp instead of two matches.
-            ;; (setq date (org-time-string-to-absolute
-            ;;            (match-string 1) curr-date 'past t))
-            (setq date (- (org-time-string-to-absolute (match-string 1))
-                          (org-habit-duration-to-days (or (org-get-repeat) "0d")))))
+          (save-match-data
+            (org-narrow-to-subtree)
+            (when (or (re-search-forward org-deadline-time-regexp nil t)
+                      (re-search-forward org-scheduled-time-regexp nil t))
+              ;; NOTE Might want to use org-keyword-timestamp-regexp instead of two matches.
+              (setq date (org-time-string-to-absolute (match-string 1) curr-date 'past t)))
 
-          (unless (equal exp 0)
-            (let* ((notify-text '())
-                   (diff (- date curr-date))
-                   ;; Penalties should be moderate.
-                   (penalty (cond ((< exp 0) 0)
-                                  ((< diff (- (/ exp 2))) (- (/ exp 2)))
-                                  (t diff)))
-                   (penalty-str (cond ((< penalty 0) (format " (%d overdue penalty)" penalty))
-                                      ((> penalty 0) (format " (%d bonus exp)" penalty))
-                                      (t "")))
-                   (levelup-str ""))
+            (unless (equal exp 0)
+              (let* ((notify-text '())
+                     (diff (- date curr-date))
+                     ;; Penalties should be moderate.
+                     (penalty (cond ((< exp 0) 0)
+                                    ((< diff (- (/ exp 2))) (- (/ exp 2)))
+                                    (t diff)))
+                     (penalty-str (cond ((< penalty 0) (format " (%d overdue penalty)" penalty))
+                                        ((> penalty 0) (format " (%d bonus exp)" penalty))
+                                        (t "")))
+                     (levelup-str ""))
 
-              (dolist (stat stats)
-                (let ((curr-exp (assoc stat gamify-stats-alist)))
-                  (when curr-exp
-                    (let* ((curr-total (cadr curr-exp))
-                           (total-exp (+ curr-total exp penalty))
-                           (level (gamify-get-level (gamify-get-total-exp stat)))
-                           (next-level-exp (cddr level))
-                           (next-level (cadr level)))
-                      (setq levelup-str
-                            (if (>= total-exp next-level-exp)
-                                (format " You are now %s!\n" next-level)
-                                "\n"))
-                      (setf (cadr curr-exp) total-exp)
-                      (setf (caddr curr-exp) curr-time)
-                      (when achievement-id
-                        (setf (nth 4 curr-exp) (cons achievement-id (nth 4 curr-exp))))
-                      (setq gamify-last-stats-modification-time curr-time)))
+                (dolist (stat stats)
+                  (let ((curr-exp (assoc stat gamify-stats-alist)))
+                    (when curr-exp
+                      (let* ((curr-total (cadr curr-exp))
+                             (total-exp (+ curr-total exp penalty))
+                             (level (gamify-get-level (gamify-get-total-exp stat)))
+                             (next-level-exp (cddr level))
+                             (next-level (cadr level)))
+                        (setq levelup-str
+                              (if (>= total-exp next-level-exp)
+                                  (format " You are now %s!\n" next-level)
+                                  "\n"))
+                        (setf (cadr curr-exp) total-exp)
+                        (setf (caddr curr-exp) curr-time)
+                        (when achievement-id
+                          (setf (nth 4 curr-exp) (cons achievement-id (nth 4 curr-exp))))
+                        (setq gamify-last-stats-modification-time curr-time)))
 
-                  (unless curr-exp
-                    (setq levelup-str "\n")
-                    (add-to-list 'gamify-stats-alist
-                                 (list stat
+                    (unless curr-exp
+                      (setq levelup-str "\n")
+                      (add-to-list 'gamify-stats-alist
+                                   (list stat
+                                         (+ exp penalty)
+                                         curr-time
+                                         (when (y-or-n-p
+                                                (format "`%s' is a new skill. Care to add its dependancies? "
+                                                        stat))
+                                           ;; FIXME post-command-hook error
+                                           (delq ""
+                                                 (split-string
+                                                  (read-string "Enter a space-separated list of stats: "))))
+                                         (when achievement-id
+                                           (list achievement-id))))))
+                  (add-to-list 'notify-text
+                               (format "You earned %d XP in %s%s!%s%s"
                                        (+ exp penalty)
-                                       curr-time
-                                       (when (y-or-n-p
-                                              (format "`%s' is a new skill. Care to add its dependancies? "
-                                                      stat))
-                                         ;; FIXME post-command-hook error
-                                         (delq ""
-                                               (split-string
-                                                (read-string "Enter a space-separated list of stats: "))))
-                                       (when achievement-id
-                                         (list achievement-id))))))
-                (add-to-list 'notify-text
-                             (format "You earned %d XP in %s%s!%s%s"
-                                     (+ exp penalty)
-                                     (gamify-stat-name stat)
-                                     penalty-str
-                                     levelup-str
-                                     (if achievement-str
-                                         (concat achievement-str "\n")
-                                         ""))))
-              (gamify-save-stats)
-              (notify-send "QUEST COMPLETED"
-                           (apply #'concat notify-text)
-                           (concat my-stuff-dir "xp.png"))))))))
+                                       (gamify-stat-name stat)
+                                       penalty-str
+                                       levelup-str
+                                       (if achievement-str
+                                           (concat achievement-str "\n")
+                                           ""))))
+                (gamify-save-stats)
+                (notify-send "QUEST COMPLETED"
+                             (apply #'concat notify-text)
+                             (concat my-stuff-dir "xp.png")))))))))
   t) ;; Always ok.
 
 (defun gamify-org-agenda-tasks ()
@@ -629,7 +624,7 @@
   (add-hook 'kill-emacs-hook 'gamify-save-stats)
 
   (when gamify-org-p
-    (add-hook 'org-trigger-hook 'gamify-org-add-exp))
+    (add-hook 'org-blocker-hook 'gamify-org-add-exp))
 
   (setq gamify-mode-line-string (gamify-show-stats))
   (setq gamify-timer (run-at-time gamify-update-interval
@@ -650,7 +645,7 @@
   (remove-hook 'kill-emacs-hook 'gamify-save-stats)
 
   (when gamify-org-p
-    (remove-hook 'org-trigger-hook 'gamify-org-add-exp))
+    (remove-hook 'org-blocker-hook 'gamify-org-add-exp))
 
   (setq gamify-timer (and gamify-timer
                           (cancel-timer gamify-timer)))
