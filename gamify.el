@@ -199,13 +199,32 @@
                  (assoc achievement gamify-achievements-alist))
                achievements))))
 
+(defun gamify-get-mod-time (stat-name exclude)
+  (let* ((stat (assoc stat-name gamify-stats-alist))
+         (deps (map 'list
+                    (lambda (dep)
+                      (if (listp dep)
+                          (car dep)
+                          dep))
+                    (nth 3 stat)))
+         (exclude-list (append deps exclude))
+         (dep-mod-times (map 'list
+                             (lambda (name)
+                               (if (member name exclude)
+                                   0
+                                   (gamify-get-mod-time name (cons name exclude-list))))
+                             deps))
+         (this-mod-time (nth 2 stat)))
+    (if this-mod-time
+        (reduce #'max (cons this-mod-time  dep-mod-times))
+        0)))
+
 (defun gamify-rusty-p (stat-name)
   (let* ((curr-time (float-time (current-time)))
-         (stat (assoc stat-name gamify-stats-alist))
-         (mod-time (nth 2 stat))
-         (time-delta (- curr-time mod-time)))
+         (time-delta (- curr-time (gamify-get-mod-time stat-name
+                                                       (list stat-name)))))
     (cond ((> time-delta gamify-very-rusty-time) 'very-rusty)
-          ((> time-delta gamify-rusty-time)       'rusty)
+          ((> time-delta gamify-rusty-time)      'rusty)
           (t nil))))
 
 (defun gamify-get-preposition (name)
