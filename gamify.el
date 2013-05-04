@@ -148,7 +148,7 @@
   "Show pretty, pretty stats."
   (interactive)
   (setq gamify-last-pretty-stats-msg ())  ;; We need fresh stats, yo.
-  (message (gamify-get-pretty-stats))
+  (message "%s" (gamify-get-pretty-stats))
   (setq gamify-last-pretty-stats-msg ())) ;; Regenerate them again.
 
 (defvar gamify-last-pretty-stats-time 0)               ;; Used for cacheing.
