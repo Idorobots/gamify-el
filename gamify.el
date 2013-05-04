@@ -135,7 +135,7 @@
     (14300 . "HighMaster")
     (16100 . "GrandMaster")
     (18000 . "Legendary")
-    (333333333333333 . "CHEATER"))
+    (33333333 . "CHEATER"))
   "An alist of Gamify levels and their exp values."
   :group 'gamify)
 
@@ -413,17 +413,21 @@
     (insert "}\n")
     (write-file filename)))
 
-(defun gamify-stats-to-png (filename &optional skip-levels focus-stats)
-  "Exports your stats directly to a .png file using the `dot' layout."
+(defun gamify-stats-to (format filename &optional skip-levels focus-stats)
+  "Exports your stats to a given `format' using the `dot' layout."
   (let ((tmp-file (concat "/tmp/" (md5 filename) ".dot")))
     (gamify-stats-to-dot tmp-file skip-levels focus-stats)
     (shell-command-to-string
-      (concat "ccomps -x " tmp-file
-              " | " gamify-dot-layout-algorithm
-              " | unflatten "
-              " | gvpack -array3 "
-              " | neato -Tpng -n2 -o "
-              filename))))
+     (concat "ccomps -x " tmp-file
+             " | " gamify-dot-layout-algorithm
+             " | unflatten "
+             " | gvpack -array3 "
+             " | neato -T" format " -n2 -o "
+             filename))))
+
+(defun gamify-stats-to-png (filename &optional skip-levels focus-stats)
+  "Exports your stats directly to a .png file using the `dot' layout."
+  (gamify-stats-to "png" filename skip-levels focus-stats))
 
 ;; Not my brightest Emacs-Lisp moment...
 (defun gamify-pull-stats (stat-list &optional skip-levels exclude-list)
