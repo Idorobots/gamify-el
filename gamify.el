@@ -24,7 +24,6 @@
 ;; (require 'gamify)
 ;; (gamify-start)
 
-
 ;; There are quite a few variables to tweak:
 ;; - `gamify-update-interval' - number of seconds between mode-line updates.
 ;; - `gamify-format' - format string used in the mode-line:
@@ -44,12 +43,14 @@
 
 ;;; TODO:
 
-;; Skill-of-focus, achievements and quest items!
+;; - chain quests,
+;; - gamify-dot-* refactorization,
+;; - and general refactorization...
 
 ;;; Code:
 
 (require 'cl)
-(require 'misc-utils)
+(require 'gamify-utils)
 
 (defvar gamify-last-stats-modification-time 0)
 (defvar gamify-timer nil)
@@ -140,9 +141,14 @@
   :group 'gamify)
 
 (defcustom gamify-org-p nil
- "Gamify Org-Mode tasks?"
- :type 'boolean
- :group 'gamify)
+  "Gamify Org-Mode tasks?"
+  :type 'boolean
+  :group 'gamify)
+
+(defcustom gamify-notification-function nil
+  "Notification function for various notifications such as XP gains. The function should take two arguments: SUMMARY and DESCRIPTION."
+  :type 'function
+  :group 'gamify)
 
 (defun gamify-stats ()
   "Show pretty, pretty stats."
@@ -164,17 +170,17 @@
                             (lambda (dep)
                               (if (listp dep)
                                   (car dep)
-                                  dep))
+                                dep))
                             dependancies))
            (exclude (cons name (append deps-names visited)))
            (total-exp exp))
       (dolist (dependancy dependancies)
         (let ((dep-name (if (listp dependancy)
                             (car dependancy)
-                            dependancy))
+                          dependancy))
               (dep-factor (if (listp dependancy)
                               (cadr dependancy)
-                              1.0)))
+                            1.0)))
           (unless (member dep-name visited)
             (setq total-exp
                   (+ total-exp
@@ -205,19 +211,19 @@
                     (lambda (dep)
                       (if (listp dep)
                           (car dep)
-                          dep))
+                        dep))
                     (nth 3 stat)))
          (exclude-list (append deps exclude))
          (dep-mod-times (map 'list
                              (lambda (name)
                                (if (member name exclude)
                                    0
-                                   (gamify-get-mod-time name (cons name exclude-list))))
+                                 (gamify-get-mod-time name (cons name exclude-list))))
                              deps))
          (this-mod-time (nth 2 stat)))
     (if this-mod-time
         (reduce #'max (cons this-mod-time  dep-mod-times))
-        0)))
+      0)))
 
 (defun gamify-rusty-p (stat-name)
   (let* ((curr-time (float-time (current-time)))
@@ -242,33 +248,33 @@
       (setq gamify-last-pretty-stats-time current-time)
       (setq gamify-last-pretty-stats-msg
             (concat "Your Gamify stats:\n"
-               (apply #'concat
-                 (map 'list
-                      (lambda (e)
-                        (let* ((name (car e))
-                               (pretty-name (gamify-stat-name name))
-                               (mod-time (nth 2 e))
-                               (total-exp (gamify-get-total-exp name (list name)))
-                               (achievements (gamify-get-achievements name))
-                               (level (gamify-get-level total-exp))
-                               (time-delta (- current-time mod-time))
-                               (rustiness (gamify-rusty-p name))
-                               (rustiness-str (cond ((equal rustiness 'very-rusty)
-                                                     " (Very rusty)")
-                                                    ((equal rustiness 'rusty)
-                                                     " (Rusty)")
-                                                    (t ""))))
-                          (unless (member (caar level) skip-levels)
-                            (format "%s%s %s %s%s: %d/%d (%d%%)\n"
-                                    (caar level)
-                                    (if achievements "*" "")
-                                    (gamify-get-preposition pretty-name)
-                                    pretty-name
-                                    rustiness-str
-                                    total-exp
-                                    (cddr level)
-                                    (gamify-get-level-percentage total-exp)))))
-                      gamify-stats-alist))))))
+                    (apply #'concat
+                           (map 'list
+                                (lambda (e)
+                                  (let* ((name (car e))
+                                         (pretty-name (gamify-stat-name name))
+                                         (mod-time (nth 2 e))
+                                         (total-exp (gamify-get-total-exp name (list name)))
+                                         (achievements (gamify-get-achievements name))
+                                         (level (gamify-get-level total-exp))
+                                         (time-delta (- current-time mod-time))
+                                         (rustiness (gamify-rusty-p name))
+                                         (rustiness-str (cond ((equal rustiness 'very-rusty)
+                                                               " (Very rusty)")
+                                                              ((equal rustiness 'rusty)
+                                                               " (Rusty)")
+                                                              (t ""))))
+                                    (unless (member (caar level) skip-levels)
+                                      (format "%s%s %s %s%s: %d/%d (%d%%)\n"
+                                              (caar level)
+                                              (if achievements "*" "")
+                                              (gamify-get-preposition pretty-name)
+                                              pretty-name
+                                              rustiness-str
+                                              total-exp
+                                              (cddr level)
+                                              (gamify-get-level-percentage total-exp)))))
+                                gamify-stats-alist))))))
   gamify-last-pretty-stats-msg)
 
 (defvar gamify-dot-layout-algorithm "dot")
@@ -334,7 +340,7 @@
 
     (let ((stat-list (if focus-stats
                          (gamify-pull-stats focus-stats skip-levels)
-                         gamify-stats-alist))
+                       gamify-stats-alist))
           (max-exp (apply #'max (map 'list
                                      (lambda (e)
                                        (gamify-get-total-exp (car e)))
@@ -357,10 +363,10 @@
                                   printed-name
                                   total-exp
                                   (gamify-get-level-percentage total-exp))
-                          (format "%s %s\\n%s"
-                                  (gamify-stat-name (caar level))
-                                  (gamify-get-preposition printed-name)
-                                  printed-name)))
+                        (format "%s %s\\n%s"
+                                (gamify-stat-name (caar level))
+                                (gamify-get-preposition printed-name)
+                                printed-name)))
                (node-color (cdr (assoc (caar (gamify-get-level total-exp))
                                        gamify-dot-level-colors)))
                (font-color (or (case (gamify-rusty-p name)
@@ -391,7 +397,7 @@
                                   (car dependancy)
                                   name
                                   (cadr dependancy))
-                          (format "\"%s\" -> \"%s\";\n" dependancy name))))
+                        (format "\"%s\" -> \"%s\";\n" dependancy name))))
             (when (and gamify-dot-show-achievements
                        achievements)
               (insert (format (concat "\"%s achievements\" [fixedsize=false,"
@@ -462,9 +468,9 @@
                       name)))
     (if (>= (length real-name) gamify-stat-name-threshold)
         (mapconcat 'identity
-                   (split-string-on-case real-name)
+                   (gamify-split-string-on-case real-name)
                    (or separator " "))
-        real-name)))
+      real-name)))
 
 (defun gamify-assign-some-exp (&optional low delta)
   (number-to-string (gamify-some-exp low delta)))
@@ -498,7 +504,7 @@
 
 (defun gamify-show-stats ()
   (let ((total-exp (apply #'+ (map 'list #'cadr gamify-stats-alist))))
-    (format-expand gamify-formatters gamify-format (list total-exp gamify-stats-alist))))
+    (gamify-format-expand gamify-formatters gamify-format (list total-exp gamify-stats-alist))))
 
 (defun gamify-get-level (exp)
   (let ((current nil)
@@ -538,7 +544,7 @@
                               (org-entry-properties pos)))
            (exp-str (if gamify-exp
                         (cdr gamify-exp)
-                        "0"))
+                      "0"))
            (exp-val (read exp-str))
            (exp (round (* (cond ((numberp exp-val) exp-val)
                                 ((listp exp-val)   (apply #'gamify-some-exp exp-val))
@@ -585,7 +591,7 @@
                         (setq levelup-str
                               (if (>= total-exp next-level-exp)
                                   (format " You are now %s!\n" next-level)
-                                  "\n"))
+                                "\n"))
                         (setf (cadr curr-exp) total-exp)
                         (setf (caddr curr-exp) curr-time)
                         (when achievement-id
@@ -615,11 +621,12 @@
                                        levelup-str
                                        (if achievement-str
                                            (concat achievement-str "\n")
-                                           ""))))
+                                         ""))))
                 (gamify-save-stats)
-                (notify-send "QUEST COMPLETED"
-                             (apply #'concat notify-text)
-                             (concat my-stuff-dir "xp.png")))))))))
+                (when gamify-notification-function
+                  (funcall gamify-notification-function
+                           "QUEST COMPLETED"
+                           (apply #'concat notify-text))))))))))
   t) ;; Always ok.
 
 (defun gamify-org-agenda-tasks ()
@@ -643,7 +650,7 @@
   (when (file-exists-p gamify-stats-file)
     (load-file gamify-stats-file))
 
-; (add-hook 'auto-save-hook 'gamify-save-stats) ;; NOTE Too frequent.
+                                        ; (add-hook 'auto-save-hook 'gamify-save-stats) ;; NOTE Too frequent.
   (add-hook 'kill-emacs-hook 'gamify-save-stats)
 
   (when gamify-org-p
@@ -662,7 +669,7 @@
   (interactive)
   (setq gamify-mode-line-string "")
   (setq global-mode-string (delq 'gamify-mode-line-string
-                                  global-mode-string))
+                                 global-mode-string))
 
   (remove-hook 'auto-save-hook 'gamify-save-stats)
   (remove-hook 'kill-emacs-hook 'gamify-save-stats)
@@ -675,28 +682,28 @@
   (gamify-save-stats))
 
 (setq gamify-formatters
-  '(("T" . (lambda (stats)
-              (format "%d" (car stats))))
-    ("XP" . (lambda (stats)
-              (format "%.1f"
-                      (gamify-get-level-percentage (car stats)))))
-    ("xp" . (lambda (stats)
-              (format "%.1f"
-                      (gamify-get-level-percentage
-                        (apply #'min
-                               (or (delq nil
-                                   (map 'list
-                                        (lambda (stat)
-                                          (gamify-get-total-exp stat))
-                                        gamify-focus-stats))
-                                   '(0)))))))
-    ("Lc" . (lambda (stats)
-              (format "%s" (caar (gamify-get-level (car stats))))))
-    ("Ln" . (lambda (stats)
-              (format "%s" (cadr (gamify-get-level (car stats)))))))
+      '(("T" . (lambda (stats)
+                 (format "%d" (car stats))))
+        ("XP" . (lambda (stats)
+                  (format "%.1f"
+                          (gamify-get-level-percentage (car stats)))))
+        ("xp" . (lambda (stats)
+                  (format "%.1f"
+                          (gamify-get-level-percentage
+                           (apply #'min
+                                  (or (delq nil
+                                            (map 'list
+                                                 (lambda (stat)
+                                                   (gamify-get-total-exp stat))
+                                                 gamify-focus-stats))
+                                      '(0)))))))
+        ("Lc" . (lambda (stats)
+                  (format "%s" (caar (gamify-get-level (car stats))))))
+        ("Ln" . (lambda (stats)
+                  (format "%s" (cadr (gamify-get-level (car stats)))))))
 
-    ;; TODO Top skills
-    ;; etc
-)
+      ;; TODO Top skills
+      ;; etc
+      )
 
 (provide 'gamify)
