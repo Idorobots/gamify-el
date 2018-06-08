@@ -274,7 +274,12 @@
                                               total-exp
                                               (cddr level)
                                               (gamify-get-level-percentage total-exp)))))
-                                gamify-stats-alist))))))
+                                (sort (copy-seq gamify-stats-alist)
+                                      (lambda (a b)
+                                        (let ((a-name (car a))
+                                              (b-name (car b)))
+                                          (> (gamify-get-total-exp a-name (list a-name))
+                                             (gamify-get-total-exp b-name (list b-name))))))))))))
   gamify-last-pretty-stats-msg)
 
 (defvar gamify-dot-layout-algorithm "dot")
