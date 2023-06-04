@@ -615,10 +615,9 @@
                                            (concat achievement-str "\n")
                                            ""))))
                 (gamify-save-stats)
-                (when gamify-notification-function
-                  (funcall gamify-notification-function
-                           "QUEST COMPLETED"
-                           (apply #'concat notify-text))))))))))
+                (notify-send "QUEST COMPLETED"
+                             (apply #'concat notify-text)
+                             (concat my-stuff-dir "xp.png")))))))))
   t) ;; Always ok.
 
 (defun gamify-org-agenda-tasks ()
