@@ -545,7 +545,8 @@
              (equal (plist-get arg :to) "DONE"))
     (let* ((curr-time (float-time (current-time)))
            (pos (plist-get arg :position))
-           (stats (or gamify-stats-instead (org-get-tags-at pos)))
+           (stats (mapcar #'substring-no-properties
+                          (or gamify-stats-instead (org-get-tags-at pos))))
            (curr-date (calendar-absolute-from-gregorian (calendar-current-date)))
            (date curr-date)
            (gamify-exp (org-entry-get pos gamify-exp-property))
