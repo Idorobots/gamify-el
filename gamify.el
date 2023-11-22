@@ -40,6 +40,8 @@
 ;; - `gamify-stat-level' - an alist of exp values and level names for your stats.
 ;;                         Defaults to Dwarf Fortress-esque skill set.
 ;; - `gamify-org-p' - tell Gamify wether to gamify your Org-Mode tasks, or not.
+;; - `gamify-notification-function' - which function to use to send notifications.
+;; - `gamify-notification-xp-icon-path' - what icon to use for notifications.
 
 ;;; TODO:
 
@@ -149,7 +151,7 @@
   :type 'symbol
   :group 'gamify)
 
-(defcustom gamify-notification-xp-icon-path ""
+(defcustom gamify-notification-xp-icon-path nil
   "Path naming an icon to use for the notifications."
   :type 'string
   :group 'gamify)

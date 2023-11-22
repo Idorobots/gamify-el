@@ -16,8 +16,22 @@ Alternatively, copy all the =.el= files into a directory in your Emacs =load-pat
 
 * Customization
 
-There are quite a few tweakable variables. Just check the source, dang it!
+There are quite a few variables to tweak:
+- =gamify-update-interval= - number of seconds between mode-line updates.
+- =gamify-format= - format string used in the mode-line:
+   =%T= - total exp point you own,
+   =%XP= - "level-bar" percentage,
+   =%xp= - focus stat percentage,
+   =%Lc= - current level name,
+   =%Ln= - next level name.
+- =gamify-default-exp= - default base exp value used by =gamify-some-exp=.
+- =gamify-default-exp-delta= - default exp delta used by =gamify-some-exp=.
+- =gamify-stats-file= - file where Gamify should save your stats.
+- =gamify-very-rusty-time= - time in seconds, when your skills are considered "very rusty".
+- =gamify-rusty-time= - time in seconds, when your skills are considered "rusty".
+- =gamify-stat-level= - an alist of exp values and level names for your stats. Defaults to Dwarf Fortress-esque skill set.
+- =gamify-org-p= - tell Gamify wether to gamify your Org-Mode tasks, or not.
+- =gamify-notification-function= - which function to use to send notifications.
+- =gamify-notification-xp-icon-path= - what icon to use for notifications.
 
-* Stuff TODO
-
-- Add achievements and similar stuff for even more awesomeness.
+This list likely is not exhaustive. Just check the source, dang it!
