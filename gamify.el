@@ -144,6 +144,16 @@
  :type 'boolean
  :group 'gamify)
 
+(defcustom gamify-notification-function nil
+  "Emacs Lisp function used for notifications."
+  :type 'symbol
+  :group 'gamify)
+
+(defcustom gamify-notification-xp-icon-path ""
+  "Path naming an icon to use for the notifications."
+  :type 'string
+  :group 'gamify)
+
 (defun gamify-stats ()
   "Show pretty, pretty stats."
   (interactive)
@@ -615,9 +625,11 @@
                                            (concat achievement-str "\n")
                                            ""))))
                 (gamify-save-stats)
-                (notify-send "QUEST COMPLETED"
-                             (apply #'concat notify-text)
-                             (concat my-stuff-dir "xp.png")))))))))
+                (when gamify-notification-function
+                  (funcall gamify-notification-function
+                           "QUEST COMPLETED"
+                           (apply #'concat notify-text)
+                           gamify-notification-xp-icon-path)))))))))
   t) ;; Always ok.
 
 (defun gamify-org-agenda-tasks ()
