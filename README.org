@@ -5,7 +5,14 @@ Well, not really... You can use it to track your soft and professional skills de
 
 * Installation
 
-Copy all the =.el= files into a directory in your Emacs =load-path= and optionally =byte-compile-file= them.
+You can use =use-package= together with =quelpa= to install Gamify directly from this repository:
+
+#+begin_src emacs-lisp
+(use-package quelpa)
+(quelpa '(gamify :repo Idorobots/gamify-el :fetcher github))
+#+end_src
+
+Alternatively, copy all the =.el= files into a directory in your Emacs =load-path= and optionally =byte-compile-file= them.
 
 * Customization
 
