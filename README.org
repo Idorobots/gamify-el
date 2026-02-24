@@ -5,14 +5,49 @@ Well, not really... You can use it to track your soft and professional skills de
 
 * Installation
 
+** Use-package
+
 You can use =use-package= together with =quelpa= to install Gamify directly from this repository:
 
 #+begin_src emacs-lisp
 (use-package quelpa)
 (quelpa '(gamify :repo Idorobots/gamify-el :fetcher github))
+(setq gamify-org-p t) ;; enable inside org files
+(gamify-start)
 #+end_src
 
 Alternatively, copy all the =.el= files into a directory in your Emacs =load-path= and optionally =byte-compile-file= them.
+
+** Doom emacs
+
+In =packages.el=
+#+begin_src emacs-lisp
+(package! gamify
+  :recipe (:host github :repo "Idorobots/gamify-el"))
+#+end_src
+
+Reasonable default config =config.el=
+#+begin_src emacs-lisp
+(use-package! gamify
+  :config
+  (setq gamify-org-p t) ;; enable inside org files
+  (setq gamify-stats-file (concat doom-data-dir "gamify-stats-file.el")) ;; for persistance
+  (gamify-start)
+  )
+#+end_src
+
+* Quickstart
+
+Enable task gamification
+#+begin_src emacs-lisp
+** TODO My new coding project :coding:
+:PROPERTIES:
+:gamify_exp: 40
+:END:
+#+end_src
+
+Toggle the task to done and gamify will add 40 xp to your coding tag
+
 
 * Customization
 
