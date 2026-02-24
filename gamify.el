@@ -648,7 +648,7 @@
 (defun gamify-start ()
   "Starts the gamification!"
   (interactive)
-  (add-to-list 'global-mode-string 'gamify-mode-line-string t)
+  (add-to-list 'global-mode-string '(:eval gamify-mode-line-string) t)
   (and gamify-timer (cancel-timer gamify-timer))
 
   (when (file-exists-p gamify-stats-file)
